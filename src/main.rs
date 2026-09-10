@@ -1,23 +1,6 @@
-fn main() {
-    let sample_coffee = Coffee {
-        name: String::from("Ethiopia CHIRE"),
-        roaster: String::from("Fiftybeans"),
-        weight_g: 200,
-        price_czk: 380.0,
-    };
+mod scraper;
 
-    let price_100g = sample_coffee.price_per_100g();
-
-    println!("Káva: {} od {}", sample_coffee.name, sample_coffee.roaster);
-    println!(
-        "Cena za balení ({}g): {} Kč",
-        sample_coffee.weight_g, sample_coffee.price_czk
-    );
-    println!("Přepočtená cena za 100g: {:.2} Kč", price_100g);
-    println!("{:#?}", sample_coffee);
-}
-
-#[derive(Debug)]
+/*#[derive(Debug)]
 struct Coffee {
     name: String,
     roaster: String,
@@ -28,5 +11,16 @@ struct Coffee {
 impl Coffee {
     fn price_per_100g(&self) -> f64 {
         (self.price_czk / self.weight_g as f64) * 100.0
+    }
+}*/
+
+fn main() {
+    match scraper::fetch_kofio_html() {
+        Ok(html) => {
+            println!("Success! Length of HTML is: {}", html.len());
+        }
+        Err(err) => {
+            println!("Error fetching data: {}", err);
+        }
     }
 }
