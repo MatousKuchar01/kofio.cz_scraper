@@ -4,7 +4,7 @@ use scraper::{Html, Selector};
 
 pub fn fetch_coffees() -> Result<Vec<Coffee>, Error> {
     let url = "https://www.kofio.cz/kava/filtr";
-    println!("Stahuji: {}\n", url);
+    println!("Stahuji data z Kofio.cz: {}\n", url);
 
     let response = reqwest::blocking::get(url)?;
     let html_content = response.text()?;
@@ -16,84 +16,54 @@ pub fn fetch_coffees() -> Result<Vec<Coffee>, Error> {
 fn parse_coffees(html: &str) -> Vec<Coffee> {
     let document = Html::parse_document(html);
 
+    // Selektory z přiloženého HTML
     let item_selector = Selector::parse("div.category_item").unwrap();
-    let link_selector = Selector::parse("h3 a").unwrap();
+    let name_selector = Selector::parse("div.category_item_footer h3 a").unwrap();
+    let roaster_selector = Selector::parse("div.category_item_merchant a").unwrap();
     let price_selector = Selector::parse("div.price").unwrap();
-    let small_selector = Selector::parse("small").unwrap();
-    let merchant_selector = Selector::parse(".category_item_merchant").unwrap();
+    let small_selector = Selector::parse("div.price small").unwrap();
+    let stock_selector = Selector::parse("div.stock_availability span").unwrap();
+    let flavors_selector = Selector::parse("div.category_item_flavors").unwrap();
 
     let mut coffees = Vec::new();
 
     for item in document.select(&item_selector) {
-        let link_element = match item.select(&link_selector).next() {
-            Some(el) => el,
-            None => continue,
+        // 1. NÁZEV KÁVY (z <h3><a title="...">)
+        let name = match item.select(&name_selector).next() {
+            Some(el) => el.text().collect::<String>().trim().to_string(),
+            None => continue, // Pokud káva nemá název, přeskočíme
         };
 
-        let link_text = link_element.text().collect::<String>();
-        let title_attr = link_element.value().attr("title").unwrap_or("").trim();
-
-        if link_text.trim().is_empty() && title_attr.is_empty() {
+        if name.is_empty() {
             continue;
         }
 
-        // 1. PRAŽÍRNA A NÁZEV
-        let mut roaster = String::new();
-        let mut name = link_text.trim().to_string();
+        // 2. PRAŽÍRNA (z div.category_item_merchant a -> title atribut)
+        let roaster = match item.select(&roaster_selector).next() {
+            Some(el) => el
+                .value()
+                .attr("title")
+                .unwrap_or("Neznámá pražírna")
+                .trim()
+                .to_string(),
+            None => "Neznámá pražírna".to_string(),
+        };
 
-        // A) Zkusíme najít pražírnu přímo v HTML prvku .category_item_merchant
-        if let Some(merchant_el) = item.select(&merchant_selector).next() {
-            roaster = merchant_el.text().collect::<String>().trim().to_string();
-        }
-
-        // B) Pokud prvek v HTML nebyl, vytáhneme pražírnu z title="Název - Gramáž - Pražírna"
-        if (roaster.is_empty() || roaster == "Neznámá pražírna") && title_attr.contains('-') {
-            let parts: Vec<&str> = title_attr.split('-').map(|s| s.trim()).collect();
-            if parts.len() >= 2 {
-                // Pražírna bývá na Kofiu vždy úplně na konci title atributu
-                roaster = parts[parts.len() - 1].to_string();
-
-                // Pokud název obsahoval i pražírnu, očistíme ho
-                if name.ends_with(&roaster) {
-                    name = name
-                        .trim_end_matches(&roaster)
-                        .trim()
-                        .trim_end_matches('-')
-                        .trim()
-                        .to_string();
-                }
-            }
-        }
-
-        if roaster.is_empty() {
-            roaster = "Neznámá pražírna".to_string();
-        }
-
-        // 2. GRAMÁŽ
+        // 3. GRAMÁŽ (z div.price small -> např. "/ 250g")
         let mut weight_g: u32 = 0;
-
-        // A) Zkusíme <small> tag uvnitř ceny (např. "/ 200g")
         if let Some(small_el) = item.select(&small_selector).next() {
             let small_text = small_el.text().collect::<String>();
             weight_g = extract_weight(&small_text);
         }
 
-        // B) Zkusíme z title atributu
-        if weight_g == 0 {
-            weight_g = extract_weight(title_attr);
-        }
-
-        // C) Zkusíme přímo z názvu kávy
         if weight_g == 0 {
             weight_g = extract_weight(&name);
         }
-
-        // D) Pokud gramáž stále nemáme, ale máme název i cenu, fallback na standardních 250g
         if weight_g == 0 {
-            weight_g = 250;
+            weight_g = 250; // Fallback na 250g
         }
 
-        // 3. CENA
+        // 4. CENA (z div.price bez podřazeného div.price_gram)
         let mut price_czk: f64 = 0.0;
         if let Some(price_el) = item.select(&price_selector).next() {
             let direct_text: String = price_el
@@ -112,12 +82,31 @@ fn parse_coffees(html: &str) -> Vec<Coffee> {
             price_czk = extract_price(&direct_text);
         }
 
+        // 5. SKLAD (dostupnost)
+        let stock = match item.select(&stock_selector).next() {
+            Some(el) => el.text().collect::<String>().trim().to_string(),
+            None => "Neuvedeno".to_string(),
+        };
+
+        // 6. CHUTĚ (chuťový profil)
+        let flavors_raw = match item.select(&flavors_selector).next() {
+            Some(el) => el.text().collect::<String>(),
+            None => "".to_string(),
+        };
+        // Očistíme chuťové tóny od vícenásobných mezer a nových řádků
+        let flavors = flavors_raw
+            .split_whitespace()
+            .collect::<Vec<&str>>()
+            .join(" ");
+
         if price_czk > 0.0 {
             coffees.push(Coffee {
                 name,
                 roaster,
                 weight_g,
                 price_czk,
+                stock,
+                flavors,
             });
         }
     }

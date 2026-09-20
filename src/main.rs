@@ -1,11 +1,13 @@
 mod scraper;
 
 #[derive(Debug)]
-struct Coffee {
-    name: String,
-    roaster: String,
-    weight_g: u32,
-    price_czk: f64,
+pub struct Coffee {
+    pub name: String,
+    pub roaster: String,
+    pub weight_g: u32,
+    pub price_czk: f64,
+    pub stock: String,
+    pub flavors: String,
 }
 
 impl Coffee {
@@ -19,12 +21,14 @@ fn main() {
         Ok(coffees) => {
             for coffee in coffees.iter() {
                 println!(
-                    "-> {} ({}) | {}g za {} Kč | Cena/100g: {:.2} Kč",
+                    "-> {} | Pražírna: {}\n   {}g za {} Kč | Cena/100g: {:.2} Kč\n   Sklad: {} | Chuti: {}\n",
                     coffee.name,
                     coffee.roaster,
                     coffee.weight_g,
                     coffee.price_czk,
-                    coffee.price_per_100g()
+                    coffee.price_per_100g(),
+                    coffee.stock,
+                    coffee.flavors
                 );
             }
         }
