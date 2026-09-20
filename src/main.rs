@@ -15,10 +15,18 @@ impl Coffee {
 }
 
 fn main() {
-    match scraper::fetch_kofio_html() {
-        Ok(html) => {
-            println!("Success! Length of HTML is: {}", html.len());
-            scraper::parse_coffees(&html);
+    match scraper::fetch_coffees() {
+        Ok(coffees) => {
+            for coffee in coffees.iter() {
+                println!(
+                    "-> {} ({}) | {}g za {} Kč | Cena/100g: {:.2} Kč",
+                    coffee.name,
+                    coffee.roaster,
+                    coffee.weight_g,
+                    coffee.price_czk,
+                    coffee.price_per_100g()
+                );
+            }
         }
         Err(err) => {
             println!("Error fetching data: {}", err);
