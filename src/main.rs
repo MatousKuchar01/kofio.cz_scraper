@@ -1,4 +1,5 @@
 mod scraper;
+mod table;
 
 #[derive(Debug)]
 pub struct Coffee {
@@ -18,19 +19,14 @@ impl Coffee {
 
 fn main() {
     match scraper::fetch_coffees() {
-        Ok(coffees) => {
-            for coffee in coffees.iter() {
-                println!(
-                    "-> {} | Pražírna: {}\n   {}g za {} Kč | Cena/100g: {:.2} Kč\n   Sklad: {} | Chuti: {}\n",
-                    coffee.name,
-                    coffee.roaster,
-                    coffee.weight_g,
-                    coffee.price_czk,
-                    coffee.price_per_100g(),
-                    coffee.stock,
-                    coffee.flavors
-                );
-            }
+        Ok(mut coffees) => {
+            coffees.sort_by(|a, b| {
+                a.price_per_100g()
+                    .partial_cmp(&b.price_per_100g())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            table::print_coffee_table(&coffees);
         }
         Err(err) => {
             println!("Error fetching data: {}", err);
