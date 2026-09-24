@@ -13,6 +13,25 @@ pub fn fetch_coffees() -> Result<Vec<Coffee>, Error> {
     Ok(coffees)
 }
 
+/// Parsuje HTML dokument a extrahuje z něj seznam produktů kávy.
+///
+/// Funkce prochází HTML strukturu pomocí CSS selektorů a vyhledává elementy reprezentující
+/// jednotlivé kávy (`div.category_item`). U každé položky se pokouší extrahovat název,
+/// pražírnu, hmotnost, cenu, dostupnost a chuťový profil.
+///
+/// # Chování a fallbacky
+///
+/// * **Přeskakování:** Pokud položka nemá název, má název prázdný, nebo je její výsledná cena `0.0`, do výsledného seznamu se **nepřidá**.
+/// * **Extrakce hmotnosti:** Hmotnost se primárně hledá v elementu `div.price small`. Pokud tam není, zkusí se extrahovat přímo z názvu kávy. Pokud selžou obě možnosti, použije se výchozí hodnota **250 g**.
+/// * **Neznámá pražírna:** Pokud se nepodaří dohledat název pražírny z atributu `title`, nastaví se text `"Neznámá pražírna"`.
+///
+/// # Arguments
+///
+/// * `html` - Vstupní textový řetězec obsahující HTML kód stránky (např. stažený e-shop).
+///
+/// # Returns
+///
+/// Vrací `Vec<Coffee>` obsahující všechny úspěšně na parsované kávy. Pokud HTML neobsahuje žádné odpovídající prvky, vrátí prázdný vektor.
 fn parse_coffees(html: &str) -> Vec<Coffee> {
     let document = Html::parse_document(html);
 
@@ -28,7 +47,7 @@ fn parse_coffees(html: &str) -> Vec<Coffee> {
     let mut coffees = Vec::new();
 
     for item in document.select(&item_selector) {
-        // 1. NÁZEV KÁVY (z <h3><a title="...">)
+        // extrakce názvu kávy
         let name = match item.select(&name_selector).next() {
             Some(el) => el.text().collect::<String>().trim().to_string(),
             None => continue, // Pokud káva nemá název, přeskočíme
@@ -38,7 +57,7 @@ fn parse_coffees(html: &str) -> Vec<Coffee> {
             continue;
         }
 
-        // 2. PRAŽÍRNA (z div.category_item_merchant a -> title atribut)
+        // extrakce pražírny
         let roaster = match item.select(&roaster_selector).next() {
             Some(el) => el
                 .value()
@@ -49,8 +68,9 @@ fn parse_coffees(html: &str) -> Vec<Coffee> {
             None => "Neznámá pražírna".to_string(),
         };
 
-        // 3. GRAMÁŽ (z div.price small -> např. "/ 250g")
+        // extrakce gramáže
         let mut weight_g: u32 = 0;
+        
         if let Some(small_el) = item.select(&small_selector).next() {
             let small_text = small_el.text().collect::<String>();
             weight_g = extract_weight(&small_text);
@@ -59,12 +79,14 @@ fn parse_coffees(html: &str) -> Vec<Coffee> {
         if weight_g == 0 {
             weight_g = extract_weight(&name);
         }
+        
         if weight_g == 0 {
             weight_g = 250; // Fallback na 250g
         }
 
-        // 4. CENA (z div.price bez podřazeného div.price_gram)
+        // extrakce celkové ceny
         let mut price_czk: f64 = 0.0;
+
         if let Some(price_el) = item.select(&price_selector).next() {
             let direct_text: String = price_el
                 .children()
@@ -82,18 +104,18 @@ fn parse_coffees(html: &str) -> Vec<Coffee> {
             price_czk = extract_price(&direct_text);
         }
 
-        // 5. SKLAD (dostupnost)
+        // extrakce dostupnosti
         let stock = match item.select(&stock_selector).next() {
             Some(el) => el.text().collect::<String>().trim().to_string(),
             None => "Neuvedeno".to_string(),
         };
 
-        // 6. CHUTĚ (chuťový profil)
+        // extrakce chuti
         let flavors_raw = match item.select(&flavors_selector).next() {
             Some(el) => el.text().collect::<String>(),
             None => "".to_string(),
         };
-        // Očistíme chuťové tóny od vícenásobných mezer a nových řádků
+        
         let flavors = flavors_raw
             .split_whitespace()
             .collect::<Vec<&str>>()
@@ -114,6 +136,17 @@ fn parse_coffees(html: &str) -> Vec<Coffee> {
     coffees
 }
 
+/// Extrahuje hmotnost v gramech z textového řetězce.
+///
+/// Funkce v textu vyhledá číselnou hodnotu, která reprezentuje hmotnost v gramech (končí znakem 'g' nebo 'G').
+/// Aby byla hmotnost úspěšně extrahována, musí splňovat rozsah **od 50 g do 5000 g** (včetně).
+///
+/// Pokud text neobsahuje žádné platné číslo s jednotkou gramů, nebo pokud nalezená hmotnost
+/// leží mimo povolený rozsah, funkce **nevyvolá panic** a vrátí `0`.
+///
+/// # Arguments
+///
+/// * `text` - Vstupní textový řetězec (např. "Balení kávy 250g mletá" nebo "Hmotnost: 500 G").
 fn extract_weight(text: &str) -> u32 {
     let cleaned: String = text
         .chars()
@@ -139,6 +172,18 @@ fn extract_weight(text: &str) -> u32 {
     0
 }
 
+/// Extrahuje číselnou hodnotu ceny z textového řetězce.
+///
+/// Funkce vezme text před prvním výskytem zkratky "Kč" (pokud tam je),
+/// odstraní z něj všechny znaky kromě číslic, teček a čárek,
+/// převede čárky na tečky a pokusí se výsledek převést na `f64`.
+///
+/// Pokud se v textu žádné číslo nenajde nebo parsování selže,
+/// funkce **nevyvolá panic**, ale vrátí hodnotu `0.0`.
+///
+/// # Arguments
+///
+/// * `text` - Vstupní textový řetězec, který obsahuje cenu (např. "Cena: 1 250,50 Kč").
 fn extract_price(text: &str) -> f64 {
     let text_before_kc = text.split("Kč").next().unwrap_or(text);
 
