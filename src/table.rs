@@ -2,6 +2,20 @@ use crate::Coffee;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::*;
 
+/// Vytiskne přehlednou tabulku káv do standardního výstupu (STDOUT).
+///
+/// Funkce využívá formátování sady znaků UTF-8 (`UTF8_FULL`) pro vykreslení tabulky.
+/// Automaticky počítá pořadí (rank) jednotlivých položek od jedničky.
+///
+/// # Vizuální formátování
+///
+/// * **Zarovnání:** Sloupce pro balení (hmotnost), celkovou cenu a cenu za 100g jsou zarovnány **doprava** pro lepší čitelnost číselných hodnot.
+/// * **Zvýraznění TOP 3:** První **tři položky** (indexy 0, 1, 2) jsou v tabulce zvýrazněny **zelenou barvou a tučným písmem**, což je ideální pro zobrazení nejvýhodnějších nebo nejlépe hodnocených káv.
+/// * **Výpočet ceny:** Pro sloupec "Cena / 100g" funkce interně volá metodu `.price_per_100g()` na struktuře `Coffee`.
+///
+/// # Arguments
+///
+/// * `coffees` - Slice (pohled na pole) struktur `Coffee`, které se mají v tabulce zobrazit. Pokud je předán prázdný slice, vytiskne se pouze hlavička tabulky.
 pub fn print_coffee_table(coffees: &[Coffee]) {
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
